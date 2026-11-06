@@ -1,49 +1,30 @@
 # app/invoicing.py
-# SmartFlow AI - Invoicing module
-
-from datetime import datetime, timedelta
+"""Professional invoicing - VAT, due dates, WhatsApp-ready text."""
 import uuid
+from datetime import datetime, timedelta
 
-def create_invoice(customer_name: str, items: list, vat_rate: float = 0.0):
-    """
-    items = [{"name": "Airtime", "qty": 2, "price": 50}]
-    Returns invoice dict with totals.
-    """
-    subtotal = sum(item["qty"] * item["price"] for item in items)
+def create_invoice(customer: str, items: list, vat_rate: float = 0.15):
+    if not customer or not items:
+        raise ValueError("Customer and at least one item required")
+    subtotal = sum(i["qty"] * i["price"] for i in items)
     vat = round(subtotal * vat_rate, 2)
     total = round(subtotal + vat, 2)
-
-    invoice = {
-        "invoice_id": f"INV-{str(uuid.uuid4())[:8].upper()}",
-        "customer": customer_name,
-        "date": datetime.now().strftime("%Y-%m-%d"),
-        "due_date": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d"),
+    now = datetime.now()
+    return {
+        "id": f"INV-{uuid.uuid4().hex[:8].upper()}",
+        "customer": customer,
         "items": items,
-        "subtotal": round(subtotal, 2),
+        "subtotal": subtotal,
         "vat": vat,
         "total": total,
-        "status": "unpaid"
+        "date": now.strftime("%Y-%m-%d"),
+        "due_date": (now + timedelta(days=7)).strftime("%Y-%m-%d"),
+        "status": "unpaid",
     }
-    return invoice
 
-def mark_paid(invoice: dict):
-    invoice["status"] = "paid"
-    invoice["paid_date"] = datetime.now().strftime("%Y-%m-%d")
-    return invoice
-
-def invoice_text(invoice: dict) -> str:
-    """Simple text version for WhatsApp / printing."""
-    lines = [
-        f"INVOICE: {invoice['invoice_id']}",
-        f"Customer: {invoice['customer']}",
-        f"Date: {invoice['date']} | Due: {invoice['due_date']}",
-        "------------------------------"
-    ]
-    for item in invoice["items"]:
-        lines.append(f"{item['name']} x{item['qty']} @ R{item['price']} = R{item['qty'] * item['price']}")
-    lines.append("------------------------------")
-    lines.append(f"Subtotal: R{invoice['subtotal']}")
-    lines.append(f"VAT: R{invoice['vat']}")
-    lines.append(f"TOTAL: R{invoice['total']}")
-    lines.append(f"Status: {invoice['status'].upper()}")
+def invoice_text(inv: dict) -> str:
+    lines = [f"INVOICE {inv['id']}", f"To: {inv['customer']}", f"Date: {inv['date']} | Due: {inv['due_date']}", "-" * 30]
+    for i in inv["items"]:
+        lines.append(f"{i['name']} x{i['qty']} @ R{i['price']:.2f} = R{i['qty']*i['price']:.2f}")
+    lines += ["-" * 30, f"Subtotal: R{inv['subtotal']:.2f}", f"VAT (15%): R{inv['vat']:.2f}", f"TOTAL DUE: R{inv['total']:.2f}", f"Status: {inv['status'].upper()}", "Thank you for your business! - SmartFlow AI"]
     return "\n".join(lines)
