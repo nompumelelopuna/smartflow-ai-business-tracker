@@ -1,64 +1,42 @@
 # app/database.py
-# SmartFlow AI - SQLite database + transactions
-
+"""SQLite persistence for SmartFlow AI - offline-first."""
 import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = "data/smartflow.db"
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "smartflow.db")
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-def get_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _connect():
+    return sqlite3.connect(DB_PATH)
 
 def init_db():
-    conn = get_db()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
+    with _connect() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT DEFAULT 'other',
-            type TEXT NOT NULL,
+            type TEXT CHECK(type IN ('income','expense')) NOT NULL,
             date TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+        )""")
 
-def add_transaction(description: str, amount: float, category: str, type: str):
-    """type = 'income' or 'expense'. Amount positive for income."""
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO transactions (description, amount, category, type, date) VALUES (?, ?, ?, ?, ?)",
-        (description, amount, category, type, datetime.now().isoformat())
-    )
-    conn.commit()
-    conn.close()
+def add_transaction(description: str, amount: float, category: str = "other", txn_type: str = "income"):
+    if not description or amount == 0:
+        raise ValueError("Description required and amount cannot be 0")
+    date = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with _connect() as conn:
+        conn.execute("INSERT INTO transactions (description, amount, category, type, date) VALUES (?,?,?,?,?)",
+                     (description, amount, category, txn_type, date))
 
 def get_transactions(limit: int = 100):
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM transactions ORDER BY id DESC LIMIT ?", (limit,)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with _connect() as conn:
+        return conn.execute("SELECT id, description, amount, category, type, date FROM transactions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
 
 def get_totals():
-    conn = get_db()
-    row = conn.execute("""
-        SELECT
-        COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expenses
-        FROM transactions
-    """).fetchone()
-    conn.close()
-    income = row["income"]
-    expenses = row["expenses"]
-    return {
-        "income": round(income, 2),
-        "expenses": round(expenses, 2),
-        "profit": round(income - expenses, 2)
-    }
+    with _connect() as conn:
+        rows = conn.execute("SELECT type, SUM(amount) FROM transactions GROUP BY type").fetchall()
+    d = dict(rows)
+    income = d.get("income", 0) or 0
+    expenses = abs(d.get("expense", 0) or 0)
+    return {"income": income, "expenses": expenses, "profit": income - expenses}
