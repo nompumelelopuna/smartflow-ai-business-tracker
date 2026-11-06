@@ -4,8 +4,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "smartflow.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+DB_PATH = os.path.join(os.path.dirname(__file__), "data", "smartflow.db")
 
 def _connect():
     return sqlite3.connect(DB_PATH)
